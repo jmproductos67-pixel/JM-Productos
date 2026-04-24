@@ -1768,6 +1768,7 @@ tbody tr:hover td{
         </select>
         <button class="btn" onclick="exportarCarteraCsv()">Exportar cartera</button>
         <button class="btn" onclick="restaurarCarteraSeed()">Restaurar base</button>
+        <button class="btn" style="color:var(--red)" onclick="eliminarArchivados()">Eliminar archivados</button>
       </div>
 
       <div class="card" style="margin-bottom:16px">
@@ -2442,14 +2443,12 @@ async function doLogin() {
     btn.disabled = false;
     btn.textContent = 'Entrar';
   }
-  // If success, onAuthStateChange fires showApp automatically
 }
 
 async function doLogout() {
   await sb.auth.signOut();
 }
 
-// Enter key on login
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('login-pass').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') doLogin();
@@ -2459,7 +2458,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// ===== APP LOGIC (unchanged from original) =====
+// ===== APP LOGIC =====
 const pages = {
   dashboard: { title: 'Dashboard', subtitle: 'Resumen general conectado a Supabase' },
   venta: { title: 'Nueva venta', subtitle: 'Seleccion, contrato y guardado real' },
@@ -2784,6 +2783,27 @@ function contactarCartera(rowId) {
   const msg = `Hola ${name}! Te escribo de JM Productos.`;
   window.open(`https://wa.me/54${tel}?text=${encodeURIComponent(msg)}`,'_blank');
 }
+
+function eliminarArchivados() {
+  const archivados = cartera.filter(c => c.archived);
+  if (!archivados.length) { showToast('No hay clientes archivados'); return; }
+  if (!window.confirm(`Borrar definitivamente ${archivados.length} cliente(s) archivado(s)? Esta accion no se puede deshacer.`)) return;
+  cartera = cartera.filter(c => !c.archived);
+  afterCarteraChange(`${archivados.length} archivado(s) eliminado(s)`);
+}
+
+async function borrarVenta(numContrato) {
+  if (!numContrato) return;
+  if (!window.confirm('Borrar esta venta del historial? Esta accion no se puede deshacer.')) return;
+  try {
+    const { error } = await sb.from('ventas').delete().eq('num_contrato', numContrato);
+    if (error) throw error;
+    ventas = ventas.filter(v => String(v.num_contrato||'') !== String(numContrato));
+    syncHeader(); renderDashboard(); renderHistorial();
+    showToast('Venta eliminada');
+  } catch(err) { console.error(err); showToast('Error al eliminar la venta'); }
+}
+
 function exportarCarteraCsv() {
   if (!cartera.length) { showToast('No hay cartera para exportar'); return; }
   const rows = [['nombre','apellido','documento','telefono_movil','telefono_fijo','nota','tipo_manual','operacion','monto_total','saldo_actual','monto_cuota','frecuencia','proximo_vencimiento','estado_cobro','pagos_registrados','archivado','codeudor','fecha_creacion','activo']];
@@ -3138,7 +3158,7 @@ function buildContratoHtml(data) {
   <div class="print-section"><div class="print-section-title">Calendario</div>
     <table class="print-cuotas"><thead><tr><th>N°</th><th>Fecha</th><th>Monto</th><th>Firma</th></tr></thead><tbody>${cuotasRows}</tbody></table>
   </div>
-  <div class="print-condiciones"><strong>Condiciones:</strong> El atraso genera recargo del <strong>10% por dia de mora</strong>. Pago por transferencia o efectivo segun se acuerde.</div>
+  <div class="print-condiciones"><strong>Condiciones:</strong> Ante el incumplimiento de <strong>dos (2) cuotas consecutivas</strong>, el vendedor tiene derecho a recuperar el producto sin necesidad de previo aviso judicial. Pago por transferencia o efectivo segun se acuerde.</div>
   <div class="print-firma">
     <div class="firma-box"><div class="firma-label">Comprador - ${escapeHtml(data.nombre)} ${escapeHtml(data.apellido)}</div>${data.dni?`<div class="firma-label">DNI: ${escapeHtml(data.dni)}</div>`:''}</div>
     <div class="firma-box"><div class="firma-label">Vendedor - JM Productos</div></div>
@@ -3288,6 +3308,7 @@ function renderHistorial() {
     <td><div style="display:flex;gap:8px;flex-wrap:wrap">
       ${v.contrato_html?`<button class="btn" style="padding:4px 10px;font-size:11px" onclick="verContrato('${jsq(v.num_contrato||'')}')">Ver</button>`:''}
       ${v.tel_cliente?`<button class="btn" style="padding:4px 10px;font-size:11px" onclick="reWsp('${jsq(v.tel_cliente||'')}','${jsq((v.cliente||'').split(' ')[0]||'')}','${jsq(v.producto||'')}','${jsq(v.total||'')}')">WhatsApp</button>`:''}
+      <button class="btn" style="padding:4px 10px;font-size:11px;color:var(--red)" onclick="borrarVenta('${jsq(v.num_contrato||'')}')">Borrar</button>
     </div></td>
   </tr>`).join('');
 }
@@ -3427,7 +3448,6 @@ async function cargarDatos() {
   setLoading(false);
 }
 
-// Close modals on bg click
 document.querySelectorAll('.modal-bg').forEach(modal => {
   modal.addEventListener('click', e => { if (e.target===modal) modal.classList.remove('open'); });
 });
